@@ -264,10 +264,29 @@ class GitExtractor(SourceStampExtractor):
         remote = self.config.get("branch." + self.branch + ".remote")
         ref = self.config.get("branch." + self.branch + ".merge")
         if remote and ref:
+            if not self.repository:
+                self.repository = self.config.get("remote." + remote + ".url")
             remote_branch = ref.split("/", 3)[-1]
             d = self.dovc(["rev-parse", remote + "/" + remote_branch])
             d.addCallback(self.override_baserev)
             return d
+
+        d = self.dovc(["branch", "-r", "--contains", self.baserev])
+        d.addCallback(self.parseBranches)
+        return d
+
+    def parseBranches(self, res):
+        for l in res.split("\n"):
+            parts = l.split("->")
+            # Grab the target of a symlink if there is one
+            ref = parts[-1].strip()
+            remote = ref.split("/")[0]
+            repo = self.config.get("remote." + remote + ".url")
+            if repo:
+                if not self.repository or self.repository == repo:
+                    d = self.dovc(["rev-parse", ref])
+                    d.addCallback(self.override_baserev)
+                    return d
 
     def override_baserev(self, res):
         self.baserev = res.strip()
