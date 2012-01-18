@@ -20,6 +20,7 @@ from twisted.internet import reactor
 from twisted.spread import pb
 from twisted.cred import credentials
 from optparse import OptionParser
+from buildbot.web.status.hooks import github
 
 try:
     import json
@@ -45,63 +46,21 @@ class GitHubBuildBot(resource.Resource):
                 the http request object
         """
         try:
-            payload = json.loads(request.args['payload'][0])
-            user = payload['repository']['owner']['name']
-            repo = payload['repository']['name']
-            repo_url = payload['repository']['url']
-            self.private = payload['repository']['private']
-            project = request.args.get('project', None)
-            if project:
-                project = project[0]
-            logging.debug("Payload: " + str(payload))
-            self.process_change(payload, user, repo, repo_url, project)
+            changes = github.getChanges(request)
+            self.process_changes(changes[0])
         except Exception:
             logging.error("Encountered an exception:")
             for msg in traceback.format_exception(*sys.exc_info()):
                 logging.error(msg.strip())
 
-    def process_change(self, payload, user, repo, repo_url, project):
+    def process_changes(self, changes):
         """
-        Consumes the JSON as a python object and actually starts the build.
+        Submit changes to buildbot.
         
         :arguments:
-            payload
-                Python Object that represents the JSON sent by GitHub Service
-                Hook.
+            changes
+                List of dictionaries representing changes.
         """
-        changes = []
-        newrev = payload['after']
-        refname = payload['ref']
-        
-        # We only care about regular heads, i.e. branches
-        match = re.match(r"^refs\/heads\/(.+)$", refname)
-        if not match:
-            logging.info("Ignoring refname `%s': Not a branch" % refname)
-
-        branch = match.group(1)
-        # Find out if the branch was created, deleted or updated. Branches
-        # being deleted aren't really interesting.
-        if re.match(r"^0*$", newrev):
-            logging.info("Branch `%s' deleted, ignoring" % branch)
-        else: 
-            for commit in payload['commits']:
-                files = []
-                files.extend(commit['added'])
-                files.extend(commit['modified'])
-                files.extend(commit['removed'])
-                change = {'revision': commit['id'],
-                     'revlink': commit['url'],
-                     'comments': commit['message'],
-                     'branch': branch,
-                     'who': commit['author']['name'] 
-                            + " <" + commit['author']['email'] + ">",
-                     'files': files,
-                     'links': [commit['url']],
-                     'repository': repo_url,
-                     'project': project,
-                }
-                changes.append(change)
-        
         # Submit the changes, if any
         if not changes:
             logging.warning("No changes found")
