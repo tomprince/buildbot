@@ -30,6 +30,7 @@ from buildbot import config
 from buildbot.test.util import steps
 from buildbot.test.fake.remotecommand import Expect, ExpectRemoteRef
 
+
 class TestFileUpload(unittest.TestCase):
     def setUp(self):
         fd, self.destfile = tempfile.mkstemp()
@@ -143,6 +144,7 @@ class TestFileUpload(unittest.TestCase):
         s.step_status.addURL.assert_called_once_with(
             os.path.basename(self.destfile), "http://server/file")
 
+
 class TestDirectoryUpload(steps.BuildStepMixin, unittest.TestCase):
     def setUp(self):
         self.destdir = os.path.abspath('destdir')
@@ -181,6 +183,49 @@ class TestDirectoryUpload(steps.BuildStepMixin, unittest.TestCase):
         self.expectOutcome(result=SUCCESS, status_text=["uploading", "srcdir"])
         d = self.runStep()
         return d
+
+class TestFileUpload_Expect(steps.BuildStepMixin, unittest.TestCase):
+    def setUp(self):
+        fd, self.destfile = tempfile.mkstemp()
+        os.close(fd)
+        os.unlink(self.destfile)
+        return self.setUpBuildStep()
+
+    def tearDown(self):
+        if os.path.exists(self.destfile):
+            os.unlink(self.destfile)
+        return self.tearDownBuildStep()
+
+    def test_basic(self):
+        self.setupStep(transfer.FileUpload(slavesrc=__file__, masterdest=self.destfile))
+
+        def slave_cmd(command):
+            writer = command.args['writer']
+            writer.remote_write(open(command.args['slavesrc'], "rb").read())
+            writer.remote_close()
+
+        self.expectCommands(
+                Expect('uploadFile', { 'slavesrc': __file__,
+                       'keepstamp': False,
+                       'maxsize': None,
+                       'blocksize': 16*1024,
+                       'writer': Mock(),
+                       'workdir': 'wkdir',
+                       })
+                + Expect.behavior(slave_cmd)
+                + 0
+        )
+        self.expectOutcome(result=SUCCESS,
+                    status_text=["upload", os.path.basename(__file__)])
+
+        d = self.runStep()
+        @d.addCallback
+        def cb(res):
+            self.assertEquals(open(self.destfile, "rb").read(),
+                    open(__file__, "rb").read())
+
+        return d
+
 
 class TestStringDownload(unittest.TestCase):
     def testBasic(self):
