@@ -61,8 +61,16 @@ def createUserObject(master, author, src=None):
             attr_data=usdict['attr_data'])
 
 
-def _extractContact(contact, contact_type, uid):
-    contact = contact and contact[contact_type]
+def _extractContact(usdict, contact_type, uid):
+    if isinstance(contact_type, str):
+        contact_type = [contact_type]
+    if usdict:
+        for type in contact_type:
+            contact = usdict.get(type)
+            if contact:
+                break
+    else:
+        contact = None
     if contact is None:
         log.msg("Unable to find '%s' for uid: %r" % (contact_type, uid))
     return contact

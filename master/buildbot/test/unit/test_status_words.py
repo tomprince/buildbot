@@ -436,7 +436,8 @@ class TestIRC(unittest.TestCase):
             useSSL=False,
             lostDelay=10,
             failedDelay=20,
-            useColors=False)
+            useColors=False,
+            useUsers=True)
 
         # patch it up
         factory = self.factory
@@ -453,7 +454,8 @@ class TestIRC(unittest.TestCase):
                 noticeOnChannel=True,
                 useColors=False,
                 useRevisions=True,
-                showBlameList=False)
+                showBlameList=False,
+                useUsers=True)
 
     def test_service(self):
         irc = self.makeIRC()
