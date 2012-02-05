@@ -1170,7 +1170,7 @@ def users_client(config, runReactor=False):
     from buildbot.process.users import users    # for srcs, encrypt
 
     # accepted attr_types by `buildbot user`, in addition to users.srcs
-    attr_types = ['identifier', 'email']
+    attr_types = ['identifier', 'email', 'irc']
 
     master = config.get('master')
     assert master, "you must provide the master location"
