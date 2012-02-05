@@ -478,6 +478,7 @@ class IRCContact(base.StatusReceiver):
             if buildurl:
                 self.send("Build details are at %s" % buildurl)
 
+    @defer.inlineCallbacks
     def command_FORCE(self, args, who):
         errReply = "try 'force build [--branch=BRANCH] [--revision=REVISION] [--props=PROP1=VAL1,PROP2=VAL2...]  <WHICH> <REASON>'"
         args = shlex.split(args)
@@ -488,6 +489,14 @@ class IRCContact(base.StatusReceiver):
             raise UsageError(errReply)
         opts = ForceOptions()
         opts.parseOptions(args)
+
+        if self.channel.useUsers:
+            uid = yield users.findUserByAttr(self.master, 'irc', who)
+            if not uid:
+                self.send("sorry, not allowed")
+                return
+            # TODO: Check user is authorized
+            # TODO: Include link to user in build
 
         which = opts['builder']
         branch = opts['branch']
