@@ -370,7 +370,7 @@ class TestMailNotifier(unittest.TestCase):
 
         def _getInterestedUsers():
             # 'narrator' in this case is the owner, which tests the lookup
-            return ["Big Bob <bob@mayhem.net>", "narrator"]
+            return ["narrator"]
         build.getInterestedUsers = _getInterestedUsers
 
         def _getResponsibleUsers():
@@ -473,7 +473,7 @@ class TestMailNotifier(unittest.TestCase):
 
         def _getInterestedUsers():
             # 'narrator' in this case is the owner, which tests the lookup
-            return ["Big Bob <bob@mayhem.net>", "narrator"]
+            return ["narrator"]
         build1.getInterestedUsers = _getInterestedUsers
         build2.getInterestedUsers = _getInterestedUsers
 

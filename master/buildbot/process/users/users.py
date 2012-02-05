@@ -60,7 +60,14 @@ def createUserObject(master, author, src=None):
             attr_type=usdict['attr_type'],
             attr_data=usdict['attr_data'])
 
-def getUserContact(master, contact_type=None, uid=None):
+
+def _extractContact(contact, contact_type, uid):
+    contact = contact and contact[contact_type]
+    if contact is None:
+        log.msg("Unable to find '%s' for uid: %r" % (contact_type, uid))
+    return contact
+
+def getUserContact(master, contact_type, uid):
     """
     This is a simple getter function that returns a user attribute
     that matches the contact_type argument, or returns None if no
@@ -79,7 +86,52 @@ def getUserContact(master, contact_type=None, uid=None):
     @returns: string of contact information or None via deferred
     """
     d = master.db.users.getUser(uid)
-    d.addCallback(lambda usdict: usdict and usdict.get(contact_type))
+    d.addCallback(_extractContact, contact_type, uid)
+    return d
+
+def _filter(contacts):
+    def notNone(c):
+        return c is not None
+    return filter(notNone, contacts)
+
+def getUserContacts(master, contact_type, uids):
+    d = defer.gatherResults([getUserContact(master, contact_type, uid) for uid in uids])
+    d.addCallback(_filter)
+    return d
+
+def getChangeContacts(master, change, contact_type=None):
+    d = master.db.changes.getChangeUids(change.number)
+    d.addCallback(lambda uids: getUserContacts(master, contact_type, uids))
+    return d
+
+def getSourceStampContacts(master, ss, contact_type=None):
+    dl = [getChangeContacts(master, change, contact_type) for change in ss.changes]
+    if False and ss.patch_info:
+        d = master.db.users.getUserByUsername(ss.patch_into[0])
+        d.addCallback(_extractContact, contact_type, ss.patch_info[0])
+        d.addCallback(lambda contact: filter(None, [contact]))
+        dl.append(d)
+    d = defer.gatherResults(dl)
+    @d.addCallback
+    def gatherRecipients(res):
+        recipients = []
+        map(recipients.extend, res)
+        return recipients
+    return d
+
+def getBuildContacts(master, build, contact_type=None):
+    d = getSourceStampContacts(master, build.getSourceStamp(), contact_type)
+    @d.addCallback
+    def addOwners(recipients):
+        dl = []
+        for owner in build.getInterestedUsers():
+            d = master.db.users.getUserByUsername(owner)
+            d.addCallback(_extractContact, contact_type, owner)
+            dl.append(d)
+        d = defer.gatherResults(dl)
+        d.addCallback(_filter)
+        d.addCallback(lambda owners: recipients + owners)
+        return d
     return d
 
 def encrypt(passwd):
