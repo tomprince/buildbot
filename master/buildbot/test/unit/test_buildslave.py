@@ -21,7 +21,7 @@ from buildbot.test.fake import fakemaster
 
 class AbstractBuildSlave(unittest.TestCase):
 
-    class ConcreteBuildSlave(buildslave.AbstractBuildSlave):
+    class ConcreteBuildSlave(buildslave.PBBuildSlave):
         pass
 
     def test_constructor_minimal(self):
