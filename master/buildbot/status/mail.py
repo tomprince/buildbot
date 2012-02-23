@@ -448,7 +448,7 @@ class MailNotifier(base.StatusReceiverMultiService):
                     if build is not None and self.isMailNeeded(build, build.results):
                         builds.append(build)
 
-        self.buildMessage("Buildset Complete: " + buildset['reason'], builds,
+        return self.buildMessage("Buildset Complete: " + buildset['reason'], builds,
                           buildset['results'])
         
     def _gotBuildRequests(self, breqs, buildset):
@@ -463,10 +463,12 @@ class MailNotifier(base.StatusReceiverMultiService):
             dl.append(d)
         d = defer.DeferredList(dl)
         d.addCallback(self._gotBuilds, builddicts, buildset, builders)
+        return d
 
     def _gotBuildSet(self, buildset, bsid):
         d = self.parent.db.buildrequests.getBuildRequests(bsid=bsid)
         d.addCallback(self._gotBuildRequests, buildset)
+        return d
         
     def buildsetFinished(self, bsid, result):
         d = self.parent.db.buildsets.getBuildset(bsid=bsid)
@@ -618,19 +620,19 @@ class MailNotifier(base.StatusReceiverMultiService):
             attrs = self.getCustomMesgData(self.mode, name, build, results,
                                            self.master_status)
             text, type = self.customMesg(attrs)
-            msgdict = { 'body' : text, 'type' : type }
+            d = defer.succeed({ 'body' : text, 'type' : type })
         else:
-            msgdict = self.messageFormatter(self.mode, name, build, results,
-                                            self.master_status)
+            d = defer.maybeDeferred(self.messageFormatter,
+                    self.mode, name, build, results, self.master_status)
         
-        return msgdict
+        return d
 
 
     def buildMessage(self, name, builds, results):
         patches = []
         logs = []
-        msgdict = {"body":""}
         
+        dl = []
         for build in builds:
             ss = build.getSourceStamp()
             if ss and ss.patch and self.addPatch:
@@ -638,16 +640,22 @@ class MailNotifier(base.StatusReceiverMultiService):
             if self.addLogs:
                 logs.extend(build.getLogs())
             
-            tmp = self.buildMessageDict(name=build.getBuilder().name,
+            d = self.buildMessageDict(name=build.getBuilder().name,
                                         build=build, results=build.results)
-            msgdict['body'] += tmp['body']
-            msgdict['body'] += '\n\n'
-            msgdict['type'] = tmp['type']
-            if "subject" in tmp:
-                msgdict['subject'] = tmp['subject']
+            dl.append(d)
+        dm = defer.gatherResults(dl)
+        @dm.addCallback
+        def combineMessages(msgs):
+            msgdict = {"body":""}
+            for msg in msgs:
+                msgdict['body'] += msg['body']
+                msgdict['body'] += '\n\n'
+                msgdict['type'] = msg['type']
+                if "subject" in msg:
+                    msgdict['subject'] = msg['subject']
 
-        m = self.createEmail(msgdict, name, self.master_status.getTitle(),
-                             results, builds, patches, logs)
+            return self.createEmail(msgdict, name, self.master_status.getTitle(),
+                                 results, builds, patches, logs)
 
         # now, who is this message going to?
         if self.sendToInterestedUsers:
@@ -658,10 +666,11 @@ class MailNotifier(base.StatusReceiverMultiService):
                 else:
                     d = self.useUsers(build)
                 dl.append(d)
-            d = defer.gatherResults(dl)
+            de = defer.gatherResults(dl)
         else:
-            d = defer.succeed([])
-        d.addCallback(self._gotRecipients, m)
+            de = defer.succeed([])
+        d = defer.gatherResults([dm, de])
+        d.addCallback(self._gotRecipients)
         return d
 
     def useLookup(self, build):
@@ -715,7 +724,8 @@ class MailNotifier(base.StatusReceiverMultiService):
             return self.addLogs
         return logname in self.addLogs
 
-    def _gotRecipients(self, rlist, m):
+    def _gotRecipients(self, res):
+        m, rlist = res
         to_recipients = set()
         cc_recipients = set()
 

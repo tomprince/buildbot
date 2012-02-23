@@ -145,6 +145,7 @@ class TestMailNotifier(unittest.TestCase):
                           builders=["Builder"])
         
         mn.buildMessage = fakeBuildMessage
+        fakeBuildMessage.return_value = defer.succeed(Mock())
         
         def fakeGetBuild(number):
             return build
@@ -182,12 +183,14 @@ class TestMailNotifier(unittest.TestCase):
         mn.master_status = Mock()
         mn.master_status.getBuilder = fakeGetBuilder
         mn.buildMessageDict = Mock()
-        mn.buildMessageDict.return_value = {"body":"body", "type":"text",
-                                            "subject":"subject"}
+        mn.buildMessageDict.return_value = defer.succeed({"body":"body", "type":"text",
+                                            "subject":"subject"})
             
-        mn.buildsetFinished(99, FAILURE)
-        fakeBuildMessage.assert_called_with("Buildset Complete: testReason",
-                                            [build], SUCCESS)
+        d = mn.buildsetFinished(99, FAILURE)
+        @d.addCallback
+        def callback(_):
+            fakeBuildMessage.assert_called_with("Buildset Complete: testReason",
+                                                [build], SUCCESS)
  
 
     def test_buildFinished_ignores_unspecified_categories(self):
@@ -271,8 +274,8 @@ class TestMailNotifier(unittest.TestCase):
         mn = MailNotifier('from@example.org', mode=("change",), addLogs=True)
 
         mn.buildMessageDict = Mock()
-        mn.buildMessageDict.return_value = {"body":"body", "type":"text",
-                                            "subject":"subject"}
+        mn.buildMessageDict.return_value = defer.succeed({"body":"body", "type":"text",
+                                            "subject":"subject"})
 
         mn.createEmail = Mock("createEmail")
 
@@ -380,12 +383,15 @@ class TestMailNotifier(unittest.TestCase):
         mn.parent = self
         self.status = mn.master_status = mn.buildMessageDict = Mock()
         mn.master_status.getBuilder = fakeGetBuilder
-        mn.buildMessageDict.return_value = {"body": "body", "type": "text"}
+        mn.buildMessageDict.return_value = defer.succeed({"body": "body", "type": "text"})
 
-        mn.buildMessage(builder.name, [build], build.result)
-        mn.sendMessage.assert_called_with(m, exp_called_with)
-        self.assertEqual(m['To'], exp_TO)
-        self.assertEqual(m['CC'], exp_CC)
+        d = mn.buildMessage(builder.name, [build], build.result)
+        @d.addCallback
+        def callback(_):
+            mn.sendMessage.assert_called_with(m, exp_called_with)
+            self.assertEqual(m['To'], exp_TO)
+            self.assertEqual(m['CC'], exp_CC)
+        return d
 
     def test_sendToInterestedUsers_lookup(self):
         self.do_test_sendToInterestedUsers(
@@ -503,7 +509,7 @@ class TestMailNotifier(unittest.TestCase):
         mn.parent = self
         self.status = mn.master_status = mn.buildMessageDict = Mock()
         mn.master_status.getBuilder = fakeGetBuilder
-        mn.buildMessageDict.return_value = {"body": "body", "type": "text"}
+        mn.buildMessageDict.return_value = defer.succeed({"body": "body", "type": "text"})
 
         mn.buildMessage(builder.name, [build1, build2], build1.result)
         self.assertEqual(m['To'], "tyler@mayhem.net, user2@example.net")
