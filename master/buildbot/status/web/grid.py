@@ -78,7 +78,7 @@ class GridStatusMixin(object):
         if state == "idle" and upcoming:
             state = "waiting"
 
-        n_pending = len(builder.getPendingBuildRequestStatuses())
+        n_pending = len(yield builder.getPendingBuildRequestStatuses())
 
         cxt = { 'url': path_to_builder(request, builder),
                 'name': builder.getName(),
