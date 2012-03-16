@@ -180,7 +180,12 @@ def datetime2epoch(dt):
 def in_reactor(f):
     """decorate a function by running it with maybeDeferred in a reactor"""
     def wrap(*args, **kwargs):
-        from twisted.internet import reactor, defer
+        from twisted.internet import defer
+        inReactor = kwargs.pop('_inReactor')
+        if not inReactor:
+            return defer.maybeDeferred(f, *args, **kwargs)
+
+        from twisted.internet import reactor
         result = [ ]
         def async():
             d = defer.maybeDeferred(f, *args, **kwargs)

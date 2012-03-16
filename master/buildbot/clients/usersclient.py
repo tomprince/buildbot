@@ -33,18 +33,31 @@ class UsersClient(object):
         self.password = password
         self.port = int(port)
 
-    def send(self, op, bb_username, bb_password, ids, info):
+    def _connect(self):
         f = pb.PBClientFactory()
         d = f.login(credentials.UsernamePassword(self.username, self.password))
         reactor.connectTCP(self.host, self.port, f)
+        return d
 
+    def _returnAndLose(self, res, remote):
+        remote.broker.transport.loseConnection()
+        return res
+
+    def send(self, op, bb_username, bb_password, ids, info):
+        d = self._connect()
         def call_commandline(remote):
             d = remote.callRemote("commandline", op, bb_username,
                                   bb_password, ids, info)
-            def returnAndLose(res):
-                remote.broker.transport.loseConnection()
-                return res
-            d.addCallback(returnAndLose)
+            d.addCallback(_returnAndLose, remote)
             return d
         d.addCallback(call_commandline)
+        return d
+
+    def show(self, users):
+        d = self._connect()
+        @d.addCallback
+        def cbLogin(remote):
+            d = remote.callRemote('show', users)
+            d.addBoth(self._returnAndLose, remote)
+            return d
         return d

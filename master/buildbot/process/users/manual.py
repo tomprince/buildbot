@@ -96,6 +96,28 @@ class CommandlineUserManagerPerspective(pbutil.NewCredPerspective):
                     formatted_results += "no match found\n"
         return formatted_results
 
+    def perspective_show(self, users):
+        def getUser(user):
+            d = self.master.db.users.identifierToUid(
+                                            identifier=user)
+            d.addCallback(self.master.db.users.getUser)
+            return d
+        d = defer.gatherResults(
+                [getUser(user) for user in users])
+        @d.addCallback
+        def removePassword(results):
+            filtered = []
+            for result in results:
+                if result:
+                    result = result.copy()
+                    result.pop('bb_password')
+                    filtered.append(result)
+                else:
+                    filtered.append(None)
+            return filtered
+        d.addErrback(log.err)
+        return d
+
     @defer.inlineCallbacks
     def perspective_commandline(self, op, bb_username, bb_password, ids, info):
         """
