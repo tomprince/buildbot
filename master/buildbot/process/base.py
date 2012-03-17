@@ -440,6 +440,14 @@ class Build:
             # this should cause the step to finish.
             log.msg(" stopping currentStep", self.currentStep)
             self.currentStep.interrupt(Failure(error.ConnectionLost()))
+        else:
+            self.result = RETRY
+            self.text = ["lost", "remote"]
+            self.stopped = True
+            if self._acquiringLock:
+                lock, access, d = self._acquiringLock
+                lock.stopWaitingUntilAvailable(self, access, d)
+                d.callback(None)
 
     def stopBuild(self, reason="<no reason given>"):
         # the idea here is to let the user cancel a build because, e.g.,
@@ -472,6 +480,8 @@ class Build:
             text = ["warnings"]
         elif self.result == EXCEPTION:
             text = ["exception"]
+        elif self.result == RETRY:
+            text = ["retry"]
         else:
             text = ["build", "successful"]
         text.extend(self.text)

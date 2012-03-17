@@ -211,6 +211,44 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(b.result, EXCEPTION)
         self.assert_( ('interrupt', ('stop it',), {}) not in step.method_calls)
 
+    def testStopBuildWaitingForLocks_lostRemote(self):
+        r = FakeRequest()
+
+        b = Build([r])
+        b.setBuilder(Mock())
+        b.builder.botmaster = FakeMaster()
+        slavebuilder = Mock()
+        status = Mock()
+
+        l = SlaveLock('lock')
+        lock_access = l.access('counting')
+        l.access = lambda mode: lock_access
+        real_lock = b.builder.botmaster.getLockByID(l).getLock(slavebuilder)
+        b.setLocks([l])
+
+        step = Mock()
+        step.return_value = step
+        step.startStep.return_value = SUCCESS
+        step.alwaysRun = False
+        b.setStepFactories([(step, {})])
+
+        real_lock.claim(Mock(), l.access('counting'))
+
+        def acquireLocks(res=None):
+            retval = Build.acquireLocks(b, res)
+            b.lostRemote()
+            return retval
+        b.acquireLocks = acquireLocks
+
+        b.startBuild(status, None, slavebuilder)
+
+        self.assert_( ('startStep', (b.remote,), {}) not in step.method_calls)
+        self.assert_(b.currentStep is None)
+        self.assertEqual(b.result, RETRY)
+        self.assert_( ('interrupt', ('stop it',), {}) not in step.method_calls)
+        b.build_status.setText.assert_called_with(["retry", "lost", "remote"])
+        b.build_status.setResults.assert_called_with(RETRY)
+
     def testStopBuildWaitingForStepLocks(self):
         r = FakeRequest()
 
