@@ -29,8 +29,13 @@ from twisted.python import threadpool, failure, versions, log
 # be monkey-patched from master.cfg, too:
 #     from buildbot.db import pool
 #     pool.debug = True
-debug = False
+debug = True
 _debug_id = 1
+
+_debug_fd = os.open("/tmp/sourcestamp-debug.log", os.O_WRONLY)
+_debug_write = os.write
+def msg(arg):
+    _debug_write(_debug_fd, arg + "\n")
 
 def timed_do_fn(f):
     """Decorate a do function to log before, after, and elapsed time,
@@ -51,27 +56,20 @@ def timed_do_fn(f):
 
         descr = "%s-%08x" % (name, id)
 
-        start_time = time.time()
-        log.msg("%s - before ('%s' line %d)" % (descr, file, line))
-        for name in locals:
-            if name in ('self', 'thd'):
-                continue
-            log.msg("%s -   %s = %r" % (descr, name, locals[name]))
+        msg("%s - before - %s" % (descr, locals))
 
         # wrap the callable to log the begin and end of the actual thread
         # function
         def callable_wrap(*args, **kargs):
-            log.msg("%s - thd start" % (descr,))
+            msg("%s - thd start" % (descr,))
             try:
                 return callable(*args, **kwargs)
             finally:
-                log.msg("%s - thd end" % (descr,))
+                msg("%s - thd end" % (descr,))
         d = f(callable_wrap, *args, **kwargs)
 
         def after(x):
-            end_time = time.time()
-            elapsed = (end_time - start_time) * 1000
-            log.msg("%s - after (%0.2f ms elapsed)" % (descr, elapsed))
+            msg("%s - after" % (descr,))
             return x
         d.addBoth(after)
         return d
