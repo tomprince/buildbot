@@ -46,6 +46,7 @@
     <input type="text" name="username" size=10 />
     <input type="password" name="passwd" size=10 />
     <input type="submit" value="login" />
+    <input type="hidden" name="originalPage" value="{{ request.URLPath() }}" />
     </form>
     {% endif %}
     </div>

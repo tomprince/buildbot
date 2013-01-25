@@ -17,7 +17,7 @@
 import os
 from zope.interface import Interface, Attribute, implements
 from buildbot.status.web.base import HtmlResource, ActionResource
-from buildbot.status.web.base import path_to_authfail
+from buildbot.status.web.base import path_to_authfail, path_to_root
 
 from buildbot.process.users import users
 
@@ -185,10 +185,11 @@ class AuthFailResource(HtmlResource):
         authz = self.getAuthz(request)
         if authz.authenticated(request):
             if 'originalPage' in request.args:
-                request.redirect(request.args['originalPage'])
+                request.redirect(request.args['originalPage'][0])
             else:
                 #Redirect to root if /authfail's visited without original page
                 request.redirect(path_to_root(request))
+            return ''
         else:
             templates =request.site.buildbot_service.templates
             template = templates.get_template("authfail.html")

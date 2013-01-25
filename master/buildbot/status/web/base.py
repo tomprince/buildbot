@@ -121,12 +121,13 @@ def path_to_root(request):
     return root
 
 def path_to_authfail(request):
-    ret_path = path_to_root(request) + "authfail" + "?originalPage="
-    if request.path.startswith('/authfail'):
-        ret_path += request.args['originalPage']
+    originalPage = request.args.get('originalPage')
+    if originalPage:
+        originalPage = originalPage[0]
     else:
-        ret_path += request.URLPath()
-    return urllib.quote(ret_path)
+        originalPage = str(request.URLPath())
+    return path_to_root(request) + ("authfail?originalPage=%s" %
+            (urllib.quote(originalPage),))
 
 def path_to_authzfail(request):
     return path_to_root(request) + "authzfail"
@@ -225,7 +226,7 @@ class ContextMixin(AccessorMixin):
 class ActionResource(resource.Resource, AccessorMixin):
     """A resource that performs some action, then redirects to a new URL."""
 
-    isLeaf = 1
+    isLeaf = True
 
     def getChild(self, name, request):
         return self
