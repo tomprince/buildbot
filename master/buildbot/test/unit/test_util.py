@@ -183,12 +183,29 @@ class MakeList(unittest.TestCase):
 class Flatten(unittest.TestCase):
 
     def test_simple(self):
+        """
+        When passed a flat list, it returns that list.
+        """
         self.assertEqual(util.flatten([1, 2, 3]), [1, 2, 3])
 
     def test_deep(self):
+        """
+        When passed a list with embedded lists, it returns the flattened
+        list.
+        """
         self.assertEqual(util.flatten([ [ 1, 2 ], 3, [ [ 4 ] ] ]),
                                 [1, 2, 3, 4])
+        self.assertEqual(util.flatten([ 1, [2, 3], 4]), [ 1, 2, 3, 4 ])
 
     def test_tuples(self):
+        """
+        When passed a list with embedded tuples, it returns the list
+        with the tuples unchanged.
+        """
         self.assertEqual(util.flatten([ ( 1, 2 ), 3 ]), [ (1, 2), 3 ])
 
+    def test_notList(self):
+        """
+        When passed a non-list, it returns a list of just that thing.
+        """
+        self.assertEqual(util.flatten(1), [1])

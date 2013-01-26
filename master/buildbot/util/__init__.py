@@ -35,16 +35,18 @@ def naturalSort(l):
     return l
 
 def flatten(l):
-    if l and type(l[0]) == list:
+    if isinstance(l, list):
         rv = []
         for e in l:
-            if type(e) == list:
+            if isinstance(e, list):
                 rv.extend(flatten(e))
-            else:
+            elif e is not None:
                 rv.append(e)
         return rv
+    elif l is not None:
+        return [ l ]
     else:
-        return l
+        return []
 
 def now(_reactor=None):
     if _reactor and hasattr(_reactor, "seconds"):
