@@ -257,11 +257,11 @@ class BuildStepStatus(styles.Versioned):
         self.urls[name] = url
 
     def setText(self, text):
-        self.text = text
+        self.text = util.flatten(text)
         for w in self.watchers:
             w.stepTextChanged(self.build, self, text)
     def setText2(self, text):
-        self.text2 = text
+        self.text2 = util.flatten(text)
         for w in self.watchers:
             w.stepText2Changed(self.build, self, text)
 

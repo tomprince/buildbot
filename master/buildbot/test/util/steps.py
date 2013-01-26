@@ -14,7 +14,7 @@
 # Copyright Buildbot Team Members
 
 import mock
-from buildbot import interfaces
+from buildbot import interfaces, util
 from buildbot.process import buildstep
 from buildbot.test.fake import remotecommand, fakebuild, slave
 
@@ -106,7 +106,7 @@ class BuildStepMixin(object):
         ss.logs = {}
 
         def ss_setText(strings):
-            ss.status_text = strings
+            ss.status_text = util.flatten(strings)
         ss.setText = ss_setText
 
         ss.getLogs = lambda : ss.logs.values()
