@@ -20,6 +20,7 @@ from buildbot.process.buildstep import BuildStep
 from buildbot.process.buildstep import SUCCESS, FAILURE
 from twisted.internet import error
 from twisted.internet.protocol import ProcessProtocol
+from buildbot import util
 
 class MasterShellCommand(BuildStep):
     """
@@ -42,18 +43,11 @@ class MasterShellCommand(BuildStep):
         BuildStep.__init__(self, **kwargs)
 
         self.command=command
-        if description:
-            self.description = description
-        if isinstance(self.description, str):
-            self.description = [self.description]
-        if descriptionDone:
-            self.descriptionDone = descriptionDone
-        if isinstance(self.descriptionDone, str):
-            self.descriptionDone = [self.descriptionDone]
-        if descriptionSuffix:
-            self.descriptionSuffix = descriptionSuffix
-        if isinstance(self.descriptionSuffix, str):
-            self.descriptionSuffix = [self.descriptionSuffix]
+        self.description = util.flatten(description or self.description)
+        self.descriptionDone = util.flatten(descriptionDone
+                or self.descriptionDone)
+        self.descriptionSuffix = util.flatten(descriptionSuffix
+                or self.descriptionSuffix)
         self.env=env
         self.path=path
         self.usePTY=usePTY
@@ -157,8 +151,7 @@ class MasterShellCommand(BuildStep):
     def describe(self, done=False):
         desc = self.descriptionDone if done else self.description
         if self.descriptionSuffix:
-            desc = desc[:]
-            desc.extend(self.descriptionSuffix)
+            return [desc, self.descriptionSuffix]
         return desc
 
     def interrupt(self, reason):

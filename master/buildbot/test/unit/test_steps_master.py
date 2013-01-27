@@ -22,6 +22,7 @@ from buildbot.test.util import steps
 from buildbot.status.results import SUCCESS, FAILURE, EXCEPTION
 from buildbot.steps import master
 from buildbot.process.properties import WithProperties
+from buildbot import util
 
 class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
 
@@ -176,8 +177,10 @@ class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
                                 command='true'))
 
         # call twice to make sure the suffix doesnt get double added
-        self.assertEqual(self.step.describe(), ['x', 'z'])
-        self.assertEqual(self.step.describe(), ['x', 'z'])
+        self.assertEqual(util.flatten(self.step.describe()),
+                ['x', 'z'])
+        self.assertEqual(util.flatten(self.step.describe()),
+                ['x', 'z'])
 
         if runtime.platformType == 'win32':
             exp_argv = [ r'C:\WINDOWS\system32\cmd.exe', '/c', 'true' ]

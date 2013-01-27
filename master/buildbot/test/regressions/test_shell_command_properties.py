@@ -19,7 +19,7 @@ from buildbot.steps.shell import ShellCommand, SetProperty
 from buildbot.process.properties import WithProperties, Properties
 from buildbot.process.factory import BuildFactory
 from buildbot.sourcestamp import SourceStamp
-from buildbot import config
+from buildbot import config, util
 
 class FakeSlaveBuilder:
     slave = None
@@ -52,7 +52,7 @@ class FakeBuildStatus:
 class FakeStepStatus:
     txt = None
     def setText(self, txt):
-        self.txt = txt
+        self.txt = util.flatten(txt)
 
     def setProgress(self, sp):
         pass

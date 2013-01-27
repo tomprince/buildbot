@@ -610,7 +610,7 @@ class BuildStep(object, properties.PropertiesMixin):
             self.failed(Failure())
 
         if not doStep:
-            self.step_status.setText(self.describe(True) + ['skipped'])
+            self.step_status.setText([self.describe(True), 'skipped'])
             self.step_status.setSkipped(True)
             # this return value from self.start is a shortcut to finishing
             # the step immediately; we skip calling finished() as
@@ -646,8 +646,8 @@ class BuildStep(object, properties.PropertiesMixin):
             # to retry interrupted build due to some other issues for example
             # due to slave lost
             results = EXCEPTION
-            self.step_status.setText(self.describe(True) +
-                                 ["interrupted"])
+            self.step_status.setText([self.describe(True),
+                                 "interrupted"])
             self.step_status.setText2(["interrupted"])
         self._finishFinished(results)
 
@@ -906,8 +906,8 @@ class LoggingBuildStep(BuildStep):
 
     def checkDisconnect(self, f):
         f.trap(error.ConnectionLost)
-        self.step_status.setText(self.describe(True) +
-                                 ["exception", "slave", "lost"])
+        self.step_status.setText([self.describe(True),
+                                 "exception", "slave", "lost"])
         self.step_status.setText2(["exception", "slave", "lost"])
         return self.finished(RETRY)
 
@@ -926,11 +926,11 @@ class LoggingBuildStep(BuildStep):
         if results == SUCCESS:
             return self.describe(True)
         elif results == WARNINGS:
-            return self.describe(True) + ["warnings"]
+            return [self.describe(True), "warnings"]
         elif results == EXCEPTION:
-            return self.describe(True) + ["exception"]
+            return [self.describe(True), "exception"]
         else:
-            return self.describe(True) + ["failed"]
+            return [self.describe(True), "failed"]
 
     def getText2(self, cmd, results):
         return [self.name]

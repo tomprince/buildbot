@@ -20,7 +20,7 @@ from twisted.spread import pb
 from buildbot.process import buildstep
 from buildbot.status.results import SUCCESS, WARNINGS, FAILURE
 from buildbot.status.logfile import STDOUT, STDERR
-from buildbot import config
+from buildbot import config, util
 
 # for existing configurations that import WithProperties from here.  We like
 # to move this class around just to keep our readers guessing.
@@ -92,19 +92,11 @@ class ShellCommand(buildstep.LoggingBuildStep):
         # BuildStep (like haltOnFailure and friends), and a couple that we
         # consume ourselves.
 
-        if description:
-            self.description = description
-        if isinstance(self.description, str):
-            self.description = [self.description]
-        if descriptionDone:
-            self.descriptionDone = descriptionDone
-        if isinstance(self.descriptionDone, str):
-            self.descriptionDone = [self.descriptionDone]
-
-        if descriptionSuffix:
-            self.descriptionSuffix = descriptionSuffix
-        if isinstance(self.descriptionSuffix, str):
-            self.descriptionSuffix = [self.descriptionSuffix]
+        self.description = util.flatten(description or self.description)
+        self.descriptionDone = util.flatten(descriptionDone
+                or self.descriptionDone)
+        self.descriptionSuffix = util.flatten(descriptionSuffix
+                or self.descriptionSuffix)
 
         if command:
             self.setCommand(command)
@@ -156,9 +148,8 @@ class ShellCommand(buildstep.LoggingBuildStep):
     def describe(self, done=False):
         desc = self._describe(done)
         if self.descriptionSuffix:
-            desc = desc[:]
-            desc.extend(self.descriptionSuffix)
-        return desc
+            return util.flatten([desc, self.descriptionSuffix])
+        return util.flatten(desc)
 
     def _describe(self, done=False):
         """Return a list of short strings to describe this step, for the
@@ -178,9 +169,9 @@ class ShellCommand(buildstep.LoggingBuildStep):
         """
 
         try:
-            if done and self.descriptionDone is not None:
+            if done and self.descriptionDone:
                 return self.descriptionDone
-            if self.description is not None:
+            if self.description:
                 return self.description
 
             # we may have no command if this is a step that sets its command
