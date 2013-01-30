@@ -38,6 +38,7 @@ class MasterShellCommand(BuildStep):
     def __init__(self, command,
                  description=None, descriptionDone=None, descriptionSuffix=None,
                  env=None, path=None, usePTY=0, interruptSignal="KILL",
+                 timeout=None, maxTime=None,
                  **kwargs):
         BuildStep.__init__(self, **kwargs)
 
@@ -58,6 +59,8 @@ class MasterShellCommand(BuildStep):
         self.path=path
         self.usePTY=usePTY
         self.interruptSignal = interruptSignal
+        self.timeout = timeout
+        self.maxTime = maxTime
 
     class LocalPP(ProcessProtocol):
         def __init__(self, step):
@@ -65,9 +68,11 @@ class MasterShellCommand(BuildStep):
 
         def outReceived(self, data):
             self.step.stdio_log.addStdout(data)
+            self.step.timer.reset(self.timeout)
 
         def errReceived(self, data):
             self.step.stdio_log.addStderr(data)
+            self.step.timer.reset(self.timeout)
 
         def processEnded(self, status_object):
             if status_object.value.exitCode is not None:
@@ -136,10 +141,25 @@ class MasterShellCommand(BuildStep):
             env = newenv
         stdio_log.addHeader(" env: %r\n" % (env,))
 
-        # TODO add a timeout?
         self.process = reactor.spawnProcess(self.LocalPP(self), argv[0], argv,
                 path=self.path, usePTY=self.usePTY, env=env )
         # (the LocalPP object will call processEnded for us)
+
+        if self.timeout:
+            self.timer = reactor.callLater(self.timeout, self.doTimeout)
+
+        if self.maxTime:
+            self.maxTimer = reactor.callLater(self.maxTime, self.doMaxTimeout)
+
+    def doTimeout(self):
+        self.timer = None
+        msg = "command timed out: %d seconds without output" % self.timeout
+        self.kill(msg)
+
+    def doMaxTimeout(self):
+        self.maxTimer = None
+        msg = "command timed out: %d seconds elapsed" % self.maxTime
+        self.kill(msg)
 
     def processEnded(self, status_object):
         if status_object.value.signal is not None:
