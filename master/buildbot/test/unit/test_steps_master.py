@@ -15,7 +15,7 @@
 
 import os
 import sys
-from twisted.python import failure, runtime
+from twisted.python import failure, runtime, log
 from twisted.internet import defer, error, reactor, task
 from twisted.trial import unittest
 from buildbot.test.util import steps
@@ -28,27 +28,41 @@ class FakeProcess(object):
         self._clock = clock
         self._behaviors = behaviors
         self._proto = proto
+        self._deferred = None
+        self._signal = None
+        self._runBehaviors().addErrback(log.err)
 
     @defer.inlineCallbacks
     def _runBehaviors(self):
-        for action, data in self._behaviors:
-            if action == 'out':
-                self._proto.outReceived(data)
-            elif action == 'err':
-                self._proto.errReceived(data)
-            elif action == 'rc':
-                if data != 0:
-                    so = error.ProcessTerminated(exitCode=data)
-                else:
-                    so = error.ProcessDone(None)
-                self._proto.processEnded(failure.Failure(so))
-            elif action == 'wait':
-                yield task.deferLater(self.clock, data, lambda: None)
-            else:
-                yield True
+        try:
+            while self._behaviors:
+                if self._signal:
+                    raise defer.CancelledError
+                action, data = self._behaviors.pop(0)
+                if action == 'out':
+                    self._proto.outReceived(data)
+                elif action == 'err':
+                    self._proto.errReceived(data)
+                elif action == 'rc':
+                    if data != 0:
+                        so = error.ProcessTerminated(exitCode=data)
+                    else:
+                        so = error.ProcessDone(None)
+                    self._proto.processEnded(failure.Failure(so))
+                elif action == 'wait':
+                    # Do this because inlineCallbacks doesn't support cancellation
+                    # See https://twistedmatrix.com/trac/ticket/4632#comment:42
+                    self._deferred = task.deferLater(self._clock, data, lambda: None)
+                    yield self._deferred
+                    self._deferred = None
+        except defer.CancelledError:
+            so = error.ProcessTerminated(signal=self._signal)
+            self._proto.processEnded(failure.Failure(so))
 
     def signalProcess(self, signal):
-        assert False
+        self._signal = signal
+        if self._deferred:
+            self._deferred.cancel()
 
 class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
 
@@ -72,9 +86,7 @@ class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
         def spawnProcess(pp, cmd, argv, path, usePTY, env):
             self.assertEqual([cmd, argv, path, usePTY, env],
                         [exp_cmd, exp_argv, exp_path, exp_usePTY, exp_env])
-            process = FakeProcess(self.clock, pp, outputs)
-            process._runBehaviors()
-            return process
+            return FakeProcess(self.clock, pp, outputs)
         self.patch(reactor, 'spawnProcess', spawnProcess)
 
     def test_real_cmd(self):
