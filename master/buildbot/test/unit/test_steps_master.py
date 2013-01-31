@@ -225,3 +225,27 @@ class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
                 ])
         self.expectOutcome(result=SUCCESS, status_text=['y', 'z'])
         return self.runStep()
+
+    def test_fake_interrupted(self):
+        """
+        When L{master.MasterShellCommand} is interrupted, it
+        stops the step with L{EXCEPTION} result, and the status
+        indicates that the step was interrupted.
+        """
+        cmd = [ 'wait' ]
+        self.setupStep(
+                master.MasterShellCommand(command=cmd,
+                                env={'a':'b'}, path=['/usr/bin']))
+        self.expectLogfile('stdio', "")
+        self.expectOutcome(result=EXCEPTION,
+                status_text=["killed (KILL)", "interrupted"])
+
+        self.patchSpawnProcess(
+                exp_cmd='wait', exp_argv=['wait'],
+                exp_path=['/usr/bin'], exp_usePTY=False, exp_env={'a':'b'},
+                outputs=[
+                    ('wait', 1),
+                ])
+        d = self.runStep()
+        self.step.interrupt("test-reason")
+        return d

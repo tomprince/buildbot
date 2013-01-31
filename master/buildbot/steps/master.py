@@ -162,10 +162,10 @@ class MasterShellCommand(BuildStep):
         return desc
 
     def interrupt(self, reason):
+        BuildStep.interrupt(self, reason)
         try:
             self.process.signalProcess(self.interruptSignal)
         except KeyError: # Process not started yet
             pass
         except error.ProcessExitedAlready:
             pass
-        BuildStep.interrupt(self, reason)
