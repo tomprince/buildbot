@@ -77,7 +77,7 @@ class BuildStepStatus(styles.Versioned):
 
         self.master = master
 
-        self.waitingForLocks = False
+        self._step = None
 
     def getName(self):
         """Returns a short string with the name of this step. This string
@@ -307,10 +307,9 @@ class BuildStepStatus(styles.Versioned):
         self.logs = [ l for l in self.logs if l.hasContents() ]
 
     def isWaitingForLocks(self):
-        return self.waitingForLocks
-
-    def setWaitingForLocks(self, waiting):
-        self.waitingForLocks = waiting
+        if self._step:
+            return self._step._waitingForLocks
+        return False
 
     # persistence
 
@@ -323,6 +322,7 @@ class BuildStepStatus(styles.Versioned):
         del d['finishedWatchers']
         del d['updates']
         del d['master']
+        del d['_step']
         return d
 
     def __setstate__(self, d):

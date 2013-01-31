@@ -206,6 +206,28 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         d.addCallback(lambda _ : self.assertTrue(called[0]))
         return d
 
+    def test_interrupted(self):
+        """
+        When L{BuildStep} is interrupted, it
+        stops the step with L{EXCEPTION} result, and the status
+        indicates that the step was interrupted.
+        """
+        self.setupStep(self.FakeBuildStep())
+        self.expectLogfile('interrupt', "test-reason")
+        self.expectOutcome(result=EXCEPTION,
+                status_text=["generic", "interrupted"])
+        d = self.runStep()
+        self.step.interrupt("test-reason")
+        return d
+
+    def test_interrupted_waitingForLocks(self):
+        """
+        When L{BuildStep} is interrupted while waiting for locks, it
+        stops the step with L{EXCEPTION} result, and the status
+        indicates that the step was interrupted waiting for lcoks.
+        """
+    test_interrupted_waitingForLocks.skip = "Too much to fake, yet."
+
 
 class TestLoggingBuildStep(unittest.TestCase):
 

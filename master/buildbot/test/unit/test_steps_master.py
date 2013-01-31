@@ -237,6 +237,7 @@ class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
                 master.MasterShellCommand(command=cmd,
                                 env={'a':'b'}, path=['/usr/bin']))
         self.expectLogfile('stdio', "")
+        self.expectLogfile('interrupt', "test-reason")
         self.expectOutcome(result=EXCEPTION,
                 status_text=["killed (KILL)", "interrupted"])
 

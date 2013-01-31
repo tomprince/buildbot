@@ -479,6 +479,7 @@ class BuildStep(object, properties.PropertiesMixin):
             config.error("BuildStep name must be a string: %r" % (self.name,))
 
         self._acquiringLock = None
+        self._waitingForLocks = False
         self.stopped = False
 
     def __new__(klass, *args, **kwargs):
@@ -507,6 +508,7 @@ class BuildStep(object, properties.PropertiesMixin):
 
     def setStepStatus(self, step_status):
         self.step_status = step_status
+        step_status._step = self
 
     def setupProgress(self):
         if self.useProgress:
@@ -556,7 +558,7 @@ class BuildStep(object, properties.PropertiesMixin):
         log.msg("acquireLocks(step %s, locks %s)" % (self, self.locks))
         for lock, access in self.locks:
             if not lock.isAvailable(self, access):
-                self.step_status.setWaitingForLocks(True)
+                self._waitingForLocks = True
                 log.msg("step %s waiting for lock %s" % (self, lock))
                 d = lock.waitUntilMaybeAvailable(self, access)
                 d.addCallback(self.acquireLocks)
@@ -565,7 +567,7 @@ class BuildStep(object, properties.PropertiesMixin):
         # all locks are available, claim them all
         for lock, access in self.locks:
             lock.claim(self, access)
-        self.step_status.setWaitingForLocks(False)
+        self._waitingForLocks = False
         return defer.succeed(None)
 
     def _startStep_2(self, res):
@@ -627,6 +629,10 @@ class BuildStep(object, properties.PropertiesMixin):
             lock, access, d = self._acquiringLock
             lock.stopWaitingUntilAvailable(self, access, d)
             d.callback(None)
+        if self._waitingForLocks:
+            self.addCompleteLog('interrupt while waiting for locks', str(reason))
+        else:
+            self.addCompleteLog('interrupt', str(reason))
 
     def releaseLocks(self):
         log.msg("releaseLocks(%s): %s" % (self, self.locks))
@@ -895,10 +901,6 @@ class LoggingBuildStep(BuildStep):
         # instead of FAILURE, might make the text a bit more clear.
         # 'reason' can be a Failure, or text
         BuildStep.interrupt(self, reason)
-        if self.step_status.isWaitingForLocks():
-            self.addCompleteLog('interrupt while waiting for locks', str(reason))
-        else:
-            self.addCompleteLog('interrupt', str(reason))
 
         if self.cmd:
             d = self.cmd.interrupt(reason)
