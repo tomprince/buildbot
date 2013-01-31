@@ -16,16 +16,44 @@
 import os
 import sys
 from twisted.python import failure, runtime
-from twisted.internet import error, reactor
+from twisted.internet import defer, error, reactor, task
 from twisted.trial import unittest
 from buildbot.test.util import steps
 from buildbot.status.results import SUCCESS, FAILURE, EXCEPTION
 from buildbot.steps import master
 from buildbot.process.properties import WithProperties
 
+class FakeProcess(object):
+    def __init__(self, clock, proto, behaviors):
+        self._clock = clock
+        self._behaviors = behaviors
+        self._proto = proto
+
+    @defer.inlineCallbacks
+    def _runBehaviors(self):
+        for action, data in self._behaviors:
+            if action == 'out':
+                self._proto.outReceived(data)
+            elif action == 'err':
+                self._proto.errReceived(data)
+            elif action == 'rc':
+                if data != 0:
+                    so = error.ProcessTerminated(exitCode=data)
+                else:
+                    so = error.ProcessDone(None)
+                self._proto.processEnded(failure.Failure(so))
+            elif action == 'wait':
+                yield task.deferLater(self.clock, data, lambda: None)
+            else:
+                yield True
+
+    def signalProcess(self, signal):
+        assert False
+
 class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
 
     def setUp(self):
+        self.clock = task.Clock()
         if runtime.platformType == 'win32':
             self.comspec = os.environ.get('COMPSPEC')
             os.environ['COMSPEC'] = r'C:\WINDOWS\system32\cmd.exe'
@@ -44,17 +72,9 @@ class TestMasterShellCommand(steps.BuildStepMixin, unittest.TestCase):
         def spawnProcess(pp, cmd, argv, path, usePTY, env):
             self.assertEqual([cmd, argv, path, usePTY, env],
                         [exp_cmd, exp_argv, exp_path, exp_usePTY, exp_env])
-            for output in outputs:
-                if output[0] == 'out':
-                    pp.outReceived(output[1])
-                elif output[0] == 'err':
-                    pp.errReceived(output[1])
-                elif output[0] == 'rc':
-                    if output[1] != 0:
-                        so = error.ProcessTerminated(exitCode=output[1])
-                    else:
-                        so = error.ProcessDone(None)
-                    pp.processEnded(failure.Failure(so))
+            process = FakeProcess(self.clock, pp, outputs)
+            process._runBehaviors()
+            return process
         self.patch(reactor, 'spawnProcess', spawnProcess)
 
     def test_real_cmd(self):
