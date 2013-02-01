@@ -57,6 +57,20 @@ class TestPollingChangeSource(changesource.ChangeSourceMixin, unittest.TestCase)
         d = self.changesource.stopService()
         self.assertIs(self.successResultOf(d), None)
 
+    def test_loop_stopDuringPoll(self):
+        # track when poll() gets called
+        deferred = defer.Deferred()
+        self.changesource.poll = lambda : deferred
+
+        self.changesource.pollInterval = 5
+        self.startChangeSource()
+
+        self.runClockFor(5)
+        d = self.changesource.stopService()
+        self.assertNoResult(d)
+        deferred.callback(None)
+        self.assertIs(self.successResultOf(d), None)
+
     @compat.usesFlushLoggedErrors
     def test_loop_exception(self):
         # track when poll() gets called

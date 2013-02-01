@@ -43,6 +43,7 @@ class PollingChangeSource(ChangeSource):
     "time (in seconds) between calls to C{poll}"
 
     _loop = None
+    _loopFinished = None
 
     def __init__(self, name=None, pollInterval=60*10):
         if name:
@@ -71,7 +72,7 @@ class PollingChangeSource(ChangeSource):
 
     def startLoop(self):
         self._loop = task.LoopingCall(self.doPoll)
-        self._loop.start(self.pollInterval, now=False)
+        self._loopFinished = self._loop.start(self.pollInterval, now=False)
 
     def stopLoop(self):
         if self._loop and self._loop.running:
@@ -91,5 +92,8 @@ class PollingChangeSource(ChangeSource):
 
     def stopService(self):
         self.stopLoop()
+        if self._loopFinished:
+            return self._loopFinished.addCallback(lambda _:
+                ChangeSource.stopService(self))
         return ChangeSource.stopService(self)
 
