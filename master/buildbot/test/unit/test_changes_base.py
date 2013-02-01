@@ -27,6 +27,7 @@ class TestPollingChangeSource(changesource.ChangeSourceMixin, unittest.TestCase)
         self.clock = task.Clock()
         self.patch(reactor, 'callLater', self.clock.callLater)
         self.patch(reactor, 'seconds', self.clock.seconds)
+        self.patch(reactor, 'callWhenRunning', lambda f: f())
 
         d = self.setUpChangeSource()
         def create_changesource(_):
@@ -37,7 +38,7 @@ class TestPollingChangeSource(changesource.ChangeSourceMixin, unittest.TestCase)
     def tearDown(self):
         return self.tearDownChangeSource()
 
-    def runClockFor(self, _, secs):
+    def runClockFor(self, secs):
         self.clock.pump([1.0] * secs)
 
     def test_loop_loops(self):
@@ -49,14 +50,12 @@ class TestPollingChangeSource(changesource.ChangeSourceMixin, unittest.TestCase)
         self.changesource.pollInterval = 5
         self.startChangeSource()
 
-        d = defer.Deferred()
-        d.addCallback(self.runClockFor, 12)
-        def check(_):
-            # note that it does *not* poll at time 0
-            self.assertEqual(loops, [5.0, 10.0])
-        d.addCallback(check)
-        reactor.callWhenRunning(d.callback, None)
-        return d
+        self.runClockFor(12)
+        # note that it does *not* poll at time 0
+        self.assertEqual(loops, [5.0, 10.0])
+
+        d = self.changesource.stopService()
+        self.assertIs(self.successResultOf(d), None)
 
     @compat.usesFlushLoggedErrors
     def test_loop_exception(self):
@@ -70,12 +69,7 @@ class TestPollingChangeSource(changesource.ChangeSourceMixin, unittest.TestCase)
         self.changesource.pollInterval = 5
         self.startChangeSource()
 
-        d = defer.Deferred()
-        d.addCallback(self.runClockFor, 12)
-        def check(_):
-            # note that it keeps looping after error
-            self.assertEqual(loops, [5.0, 10.0])
-            self.assertEqual(len(self.flushLoggedErrors(RuntimeError)), 2)
-        d.addCallback(check)
-        reactor.callWhenRunning(d.callback, None)
-        return d
+        self.runClockFor(12)
+        # note that it keeps looping after error
+        self.assertEqual(loops, [5.0, 10.0])
+        self.assertEqual(len(self.flushLoggedErrors(RuntimeError)), 2)
