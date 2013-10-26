@@ -13,46 +13,81 @@
 #
 # Copyright Buildbot Team Members
 
+from __future__ import print_function
+
+from zope.interface import implements
 from twisted.internet import defer
 from buildbot.buildslave.protocols import base
+from twisted.application.service import Service
 
-class FakeConnection(base.Connection):
 
-    def __init__(self, master, buildslave):
-        base.Connection.__init__(self, master, buildslave)
-        self._connected = True
+class FakeConnector(Service, object):
+
+    def __init__(self):
         self.remoteCalls = []
+        self.info = {'slave_commands': [], 'version': '0.8.2'}
+
+    def connect(self):
+        self.conn = FakeConnection(self)
+        self.parent.attached(self.conn, self.info)
+
+    def detach(self):
+        self.parent.detached()
+
+
+class FakeConnection(object):
+    implements(base.IConnection)
+
+    def __init__(self, connector):
+        self.connector = connector
         self.builders = {}  # { name : isBusy }
 
         # users of the fake can add to this as desired
-        self.info = {'slave_commands': [], 'version': '0.8.2'}
 
-    def remotePrint(self, message):
-        self.remoteCalls.append(('remotePrint', message))
+    def print(self, message):
+        self.connector.remoteCalls.append(('print', message))
         return defer.succeed(None)
 
-    def remoteGetSlaveInfo(self):
-        self.remoteCalls.append(('remoteGetSlaveInfo',))
-        return defer.succeed(self.slaveInfo)
-
-    def remoteSetBuilderList(self, builders):
-        self.remoteCalls.append(('remoteSetBuilderList', builders[:]))
-        self.builders = dict((b, False) for b in builders)
+    def setBuilderList(self, builderNames):
+        self.connector.remoteCalls.append(('setBuilderList', builderNames[:]))
+        self.builders = dict((b, FakeBuilder(self.connector)) for b in builderNames)
         return defer.succeed(None)
 
-    def remoteStartCommand(self, remoteCommand, builderName, commandId, commandName, args):
-        self.remoteCalls.append(('remoteStartCommand', remoteCommand, builderName,
-            commandId, commandName, args))
+    def getBuilder(self, builderName):
+        return self.builders[builderName]
+
+    def shutdown(self):
+        self.connector.remoteCalls.append(('shutdown',))
         return defer.succeed(None)
 
-    def remoteShutdown(self):
-        self.remoteCalls.append(('remoteShutdown',))
-        return defer.succeed(None)
+class FakeBuilder(object):
+    implements(base.IBuilder)
 
-    def remoteStartBuild(self, builderName):
-        self.remoteCalls.append(('remoteStartBuild', builderName))
-        return defer.succeed(None)
+    def __init__(self, connector):
+        self.connector = connector
 
-    def remoteInterruptCommand(self, commandId, why):
-        self.remoteCalls.append(('remoteInterruptCommand', commandId, why))
-        return defer.succeed(None)
+    def startBuild(self):
+        self.connector.remoteCalls.append('startBuild')
+        return defer.succeed(FakeBuild(self.connector))
+
+
+class FakeBuild(object):
+    implements(base.IBuild)
+
+    def __init__(self, connector):
+        self.connector = connector
+
+    def startCommand(self, remoteCommand, commandName, args):
+        self.connector.remoteCalls.append(('startCommand', remoteCommand, commandName, args))
+        return defer.succeed(FakeCommand(self.connector))
+
+
+class FakeCommand(object):
+    implements(base.ICommand)
+
+    def __init__(self, connector):
+        self.connector = connector
+
+    def interrupt(self, why):
+        self.connector.remoteCalls.append(('interruptCommand', why))
+

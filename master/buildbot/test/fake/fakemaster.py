@@ -53,6 +53,9 @@ class FakeStatus(object):
     def slaveConnected(self, name):
         pass
 
+    def slaveDisconnected(self, name):
+        pass
+
 
 class FakeBuilderStatus(object):
 

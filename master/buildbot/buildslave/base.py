@@ -19,7 +19,7 @@ from email.Message import Message
 from email.Utils import formatdate
 from zope.interface import implements
 from twisted.python import log
-from twisted.internet import defer, reactor
+from twisted.internet import defer
 from twisted.application import service
 from twisted.python.reflect import namedModule
 
@@ -45,6 +45,8 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
     subclassed to add extra functionality."""
 
     implements(IBuildSlave)
+
+    reactor = None
 
     # reconfig slaves after builders
     reconfig_priority = 64
@@ -207,6 +209,10 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
         service.MultiService.setServiceParent(self, parent)
 
     def startService(self):
+        if self.reactor is None:
+            from twisted.internet import reactor
+            self.reactor = reactor
+
         self.updateLocks()
         self.startMissingTimer()
         d = self._getSlaveInfo()
@@ -272,7 +278,7 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
     def startMissingTimer(self):
         if self.notify_on_missing and self.missing_timeout and self.parent:
             self.stopMissingTimer() # in case it's already running
-            self.missing_timer = reactor.callLater(self.missing_timeout,
+            self.missing_timer = self.reactor.callLater(self.missing_timeout,
                                                 self._missing_timer_fired)
 
     def stopMissingTimer(self):
@@ -327,7 +333,7 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
             self.slave_status.buildFinished(buildFinished)
 
     @defer.inlineCallbacks
-    def attached(self, conn):
+    def attached(self, conn, info):
         """This is called when the slave connects."""
 
         metrics.MetricCountEvent.log("AbstractBuildSlave.attached_slaves", 1)
@@ -345,13 +351,11 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
 
         self.slave_status.setConnected(True)
 
-        self._applySlaveInfo(conn.info)
-        self.slave_commands = conn.info.get("slave_commands", {})
-        self.slave_environ = conn.info.get("environ", {})
-        self.slave_basedir = conn.info.get("basedir", None)
-        self.slave_system = conn.info.get("system", None)
-
-        self.conn.notifyOnDisconnect(self.detached)
+        self._applySlaveInfo(info)
+        self.slave_commands = info.get("slave_commands", {})
+        self.slave_environ = info.get("environ", {})
+        self.slave_basedir = info.get("basedir", None)
+        self.slave_system = info.get("system", None)
 
         if self.slave_system == "nt":
             self.path_module = namedModule("ntpath")
@@ -399,11 +403,11 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
         case we disconnect the older connection.
         """
 
-        if not self.slave:
+        if not self.conn:
             return defer.succeed(None)
         log.msg("disconnecting old slave %s now" % self.slavename)
         # When this Deferred fires, we'll be ready to accept the new slave
-        return self._disconnect(self.slave)
+        return self.conn.disconnect()
 
     def _disconnect(self, slave):
         # all kinds of teardown will happen as a result of
@@ -446,7 +450,7 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
         if blist == self._old_builder_list:
             return defer.succeed(None)
 
-        d = self.conn.remoteSetBuilderList(builders=blist)
+        d = self.conn.setBuilderList(builderNames=blist)
         def sentBuilderList(ign):
             self._old_builder_list = blist
             return ign
@@ -538,7 +542,7 @@ class AbstractBuildSlave(config.ReconfigurableServiceMixin,
             log.msg("no remote; slave is already shut down")
             return
 
-        yield self.conn.remoteShutdown()
+        yield self.conn.shutdown()
 
     def maybeShutdown(self):
         """Shut down this slave if it has been asked to shut down gracefully,
@@ -649,7 +653,7 @@ class AbstractLatentBuildSlave(AbstractBuildSlave):
         if self.substantiation_deferred is None:
             if self.parent and not self.missing_timer:
                 # start timer.  if timer times out, fail deferred
-                self.missing_timer = reactor.callLater(
+                self.missing_timer = self.reactor.callLater(
                     self.missing_timeout,
                     self._substantiation_failed, defer.TimeoutError())
             self.substantiation_deferred = defer.Deferred()
@@ -664,7 +668,7 @@ class AbstractLatentBuildSlave(AbstractBuildSlave):
     def _substantiate(self, build):
         # register event trigger
         d = self.start_instance(build)
-        self._shutdown_callback_handle = reactor.addSystemEventTrigger(
+        self._shutdown_callback_handle = self.reactor.addSystemEventTrigger(
             'before', 'shutdown', self._soft_disconnect, fast=True)
         def start_instance_result(result):
             # If we don't report success, then preparation failed.
@@ -681,7 +685,7 @@ class AbstractLatentBuildSlave(AbstractBuildSlave):
             if self._shutdown_callback_handle is not None:
                 handle = self._shutdown_callback_handle
                 del self._shutdown_callback_handle
-                reactor.removeSystemEventTrigger(handle)
+                self.reactor.removeSystemEventTrigger(handle)
             return failure
         d.addCallbacks(start_instance_result, clean_up)
         return d
@@ -759,7 +763,7 @@ class AbstractLatentBuildSlave(AbstractBuildSlave):
         self._clearBuildWaitTimer()
         if self.build_wait_timeout <= 0:
             return
-        self.build_wait_timer = reactor.callLater(
+        self.build_wait_timer = self.reactor.callLater(
             self.build_wait_timeout, self._soft_disconnect)
 
     @defer.inlineCallbacks
@@ -770,7 +774,7 @@ class AbstractLatentBuildSlave(AbstractBuildSlave):
         if self._shutdown_callback_handle is not None:
             handle = self._shutdown_callback_handle
             del self._shutdown_callback_handle
-            reactor.removeSystemEventTrigger(handle)
+            self.reactor.removeSystemEventTrigger(handle)
         self.substantiated = False
         self.building.clear() # just to be sure
         yield d

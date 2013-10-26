@@ -13,56 +13,55 @@
 #
 # Copyright Buildbot Team Members
 
-from twisted.application import service
-from buildbot.util import subscription
-from buildbot import config
+from __future__ import print_function
 
-class Listener(config.ReconfigurableServiceMixin, service.MultiService):
-
-    def __init__(self, master):
-        service.MultiService.__init__(self)
-        self.master = master
+from zope.interface import Interface
 
 
-class Connection(object):
-
-    def __init__(self, master, buildslave):
-        self.master = master
-        self.buildslave = buildslave
-        name = buildslave.slavename
-        self._disconnectSubs = subscription.SubscriptionPoint(
-                "disconnections from %s" % name)
-
-    # disconnection handling
-
-    def notifyOnDisconnect(self, cb):
-        return self._disconnectSubs.subscribe(cb)
-
-    def notifyDisconnected(self):
-        self._disconnectSubs.deliver()
-
-    def loseConnection(self):
-        raise NotImplementedError
+class IConnection(Interface):
 
     # methods to send messages to the slave
 
-    def remotePrint(self, message):
-        raise NotImplementedError
+    def print(message):
+        """
+        Instruct the slave to log a message.
+        """
 
-    def remoteGetSlaveInfo(self):
-        raise NotImplementedError
+    def setBuilderList(builderNames):
+        """
+        Provide list of configured builders to the slave.
+        """
 
-    def remoteSetBuilderList(self, builders):
-        raise NotImplementedError
+    def getBuilder(builder):
+        """
+        """
 
-    def remoteStartCommand(self, remoteCommand, builderName, commandId, commandName, args):
-        raise NotImplementedError
+    def shutdown():
+        """
+        Request that the slave shutdown.
+        """
 
-    def remoteShutdown(self):
-        raise NotImplementedError
+    def disconnect():
+        """
+        Forcibly disconnect the slave.
+        """
 
-    def remoteStartBuild(self, builderName):
-        raise NotImplementedError
+class IBuilder(Interface):
 
-    def remoteInterruptCommand(self, commandId, why):
-        raise NotImplementedError
+
+
+    def startBuild(self):
+        """
+        """
+
+
+class IBuild(Interface):
+    def startCommand(remoteCommand, commandName, args):
+        """
+        """
+
+class ICommand(Interface):
+    def interrupt(self, why):
+        """
+        Interrupt a running command.
+        """

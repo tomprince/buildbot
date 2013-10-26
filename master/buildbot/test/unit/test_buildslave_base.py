@@ -15,7 +15,7 @@
 
 import mock
 from twisted.trial import unittest
-from twisted.internet import defer, task, reactor
+from twisted.internet import defer, task
 from buildbot import config, locks
 from buildbot.buildslave import base
 from buildbot.test.fake import fakemaster, fakedb, bslavemanager, fakeprotocol
@@ -24,23 +24,24 @@ from buildbot.test.fake.botmaster import FakeBotMaster
 class TestAbstractBuildSlave(unittest.TestCase):
 
     class ConcreteBuildSlave(base.AbstractBuildSlave):
-        pass
+        reactor = task.Clock()
 
     def setUp(self):
         self.master = fakemaster.make_master(wantDb=True, testcase=self)
         self.botmaster = FakeBotMaster(self.master)
 
-        self.clock = task.Clock()
-        self.patch(reactor, 'callLater', self.clock.callLater)
-        self.patch(reactor, 'seconds', self.clock.seconds)
-
     def createBuildslave(self, name='bot', password='pass', attached=False, **kwargs):
         slave = self.ConcreteBuildSlave(name, password, **kwargs)
         slave.master = self.master
         slave.botmaster = self.botmaster
+        self.connector = fakeprotocol.FakeConnector()
+        self.connector.setServiceParent(slave)
         if attached:
-            slave.conn = fakeprotocol.FakeConnection(self.master, slave)
+            slave.conn = fakeprotocol.FakeConnection(self.connector)
         return slave
+
+    def test_repr(self):
+        self.assertEqual(repr(self.createBuildslave()), "<ConcreteBuildSlave 'bot'>")
 
     def test_constructor_minimal(self):
         bs = self.ConcreteBuildSlave('bot', 'pass')
@@ -253,8 +254,7 @@ class TestAbstractBuildSlave(unittest.TestCase):
         ENVIRON = {}
         COMMANDS = {'cmd1': '1', 'cmd2': '1'}
 
-        conn = fakeprotocol.FakeConnection(slave.master, slave)
-        conn.info = {
+        self.connector.info = {
             'admin':   'TheAdmin',
             'host':    'TheHost',
             'access_uri': 'TheURI',
@@ -264,7 +264,7 @@ class TestAbstractBuildSlave(unittest.TestCase):
             'version': 'version',
             'slave_commands': COMMANDS,
         }
-        yield slave.attached(conn)
+        self.connector.connect()
 
         # check the values get set right
         self.assertEqual(slave.slave_status.getAdmin(),     "TheAdmin")
@@ -280,9 +280,7 @@ class TestAbstractBuildSlave(unittest.TestCase):
         slave = self.createBuildslave()
         yield slave.startService()
 
-        conn = fakeprotocol.FakeConnection(slave.master, slave)
-        conn.info = {}
-        yield slave.attached(conn)
+        self.connector.connect()
 
         self.assertEqual(self.botmaster.buildsStartedForSlaves, ["bot"])
 
@@ -300,14 +298,13 @@ class TestAbstractBuildSlave(unittest.TestCase):
         slave = self.createBuildslave()
         yield slave.startService()
 
-        conn = fakeprotocol.FakeConnection(slave.master, slave)
-        conn.info = {
+        self.connector.info = {
             'admin':   'TheAdmin',
             'host':    'TheHost',
             'access_uri': 'TheURI',
             'version': 'TheVersion',
         }
-        yield slave.attached(conn)
+        self.connector.connect()
 
         self.assertEqual(slave.slave_status.getAdmin(),   'TheAdmin')
         self.assertEqual(slave.slave_status.getHost(),    'TheHost')
@@ -328,7 +325,7 @@ class TestAbstractBuildSlave(unittest.TestCase):
         yield slave.startService()
 
         yield slave.shutdown()
-        self.assertEqual(slave.conn.remoteCalls, [('remoteShutdown',)])
+        self.assertEqual(self.connector.remoteCalls, [('shutdown',)])
 
     @defer.inlineCallbacks
     def test_slave_shutdown_not_connected(self):
@@ -345,3 +342,11 @@ class TestAbstractBuildSlave(unittest.TestCase):
 
         yield slave.shutdownRequested()
         self.assertEqual(slave.slave_status.getGraceful(), True)
+
+    def test_detach(self):
+        slave = self.createBuildslave(attached=True)
+        slave.startService()
+        self.connector.detach()
+
+        self.assertIs(slave.conn, None)
+        #FIXME

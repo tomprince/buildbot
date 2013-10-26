@@ -13,40 +13,43 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
+
+from itertools import count
+
+from zope.interface import implements
 
 from twisted.python import log
 from twisted.internet import defer, reactor
+from twisted.application.service import Service
 from buildbot.buildslave.protocols import base
 from twisted.spread import pb
+from twisted.python.util import FancyStrMixin
+from buildbot.util import ComparableMixin
 
-class Listener(base.Listener):
 
-    def __init__(self, master):
-        base.Listener.__init__(self, master)
+class Connector(FancyStrMixin, ComparableMixin, Service, object):
 
-        # username : (password, portstr, PBManager registration)
-        self._registrations = {}
+    fancybasename = "pb.Connector"
+    showAttributes = ['username', 'password', 'endpointString']
+    compare_attrs = showAttributes
 
-    @defer.inlineCallbacks
-    def updateRegistration(self, username, password, portStr):
-        # NOTE: this method is only present on the PB protocol; others do not
-        # use registrations
-        if username in self._registrations:
-            currentPassword, currentPortStr, currentReg = \
-                    self._registrations[username]
-        else:
-            currentPassword, currentPortStr, currentReg = None, None, None
+    def __init__(self, username, password, endpointString):
+        self.username = username
+        self.password = password
+        self.endpointString = endpointString
 
-        if currentPassword != password or currentPortStr != portStr:
-            if currentReg:
-                yield currentReg.unregister()
-                del self._registrations[username]
-            if portStr:
-                reg = self.master.pbmanager.register(
-                        portStr, username, password, self._getPerspective)
-                self._registrations[username] = (password, portStr, reg)
-                defer.returnValue(reg)
+    def setServiceParent(self, parent):
+        self.master = parent.master
+        Service.setServiceParent(self, parent)
+
+    def startService(self):
+        self._regstration = self.master.pbmanager.register(
+                self.endpointString, self.username, self.password, self._getPerspective)
+
+    def stopService(self):
+        return self._registration.unregister()
+
 
     @defer.inlineCallbacks
     def _getPerspective(self, mind, buildslaveName):
@@ -58,12 +61,11 @@ class Listener(base.Listener):
         try:
             mind.broker.transport.setTcpKeepAlive(1)
         except Exception:
-            log.err("Can't set TcpKeepAlive")
+            log.msg("Can't set TcpKeepAlive")
 
-        buildslave = bslaves.getBuildslaveByName(buildslaveName)
-        conn = Connection(self.master, buildslave, mind)
+        conn = Connection(self.master, self.parent, mind)
 
-        # inform the manager, logging any problems in the deferred
+        # Slave Arbiter
         accepted = yield bslaves.newConnection(conn, buildslaveName)
 
         # return the Connection as the perspective
@@ -73,7 +75,9 @@ class Listener(base.Listener):
             # TODO: return something more useful
             raise RuntimeError("rejecting duplicate slave")
 
-class Connection(base.Connection, pb.Avatar):
+
+class Connection(pb.Avatar):
+    implements(base.IConnection)
 
     # TODO: configure keepalive_interval in c['protocols']['pb']['keepalive_interval']
     keepalive_timer = None
@@ -81,92 +85,105 @@ class Connection(base.Connection, pb.Avatar):
     info = None
 
     def __init__(self, master, buildslave, mind):
-        base.Connection.__init__(self, master, buildslave)
-        self.mind = mind
+        self._master = master
+        self._buildslave = buildslave
+        self._mind = mind
+        self._builders = {}
 
     # methods called by the PBManager
 
     @defer.inlineCallbacks
     def attached(self, mind):
-        self.startKeepaliveTimer()
-        # pbmanager calls perspective.attached; pass this along to the
-        # buildslave
-        yield self.buildslave.attached(self)
-        # and then return a reference to the avatar
+        self._startKeepaliveTimer()
+
+        yield self.print(message="attached")
+
+        self._info = yield self._getSlaveInfo()
+        log.msg("Got slaveinfo from '%s'" % 'FIXME: buildslaveName')
+
+        yield self._buildslave.attached(self, self._info)
         defer.returnValue(self)
 
     def detached(self, mind):
-        self.stopKeepaliveTimer()
-        self.mind = None
-        self.notifyDisconnected()
+        self._stopKeepaliveTimer()
+        self._mind = None
+        self._buildslave.detached()
+
 
     # disconnection handling
 
     def loseConnection(self):
-        self.stopKeepaliveTimer()
-        self.mind.broker.transport.loseConnection()
+        self._stopKeepaliveTimer()
+        self._mind.broker.transport.loseConnection()
 
     # keepalive handling
 
-    def doKeepalive(self):
-        return self.mind.callRemote('print', message="keepalive")
+    def _doKeepalive(self):
+        return self._mind.callRemote('print', message="keepalive")
 
-    def stopKeepaliveTimer(self):
-        if self.keepalive_timer and self.keepalive_timer.active():
-            self.keepalive_timer.cancel()
-            self.keepalive_timer = None
+    def _stopKeepaliveTimer(self):
+        if self._keepalive_timer and self._keepalive_timer.active():
+            self._keepalive_timer.cancel()
+            self._keepalive_timer = None
 
-    def startKeepaliveTimer(self):
-        assert self.keepalive_interval
-        self.keepalive_timer = reactor.callLater(self.keepalive_interval,
-            self.doKeepalive)
+    def _startKeepaliveTimer(self):
+        assert self._keepalive_interval
+        self._keepalive_timer = reactor.callLater(self._keepalive_interval,
+            self._doKeepalive)
 
     # methods to send messages to the slave
 
-    def remotePrint(self, message):
-        return self.mind.callRemote('print', message=message)
+    def print(self, message):
+        return self._mind.callRemote('print', message=message)
 
     @defer.inlineCallbacks
-    def remoteGetSlaveInfo(self):
+    def _getSlaveInfo(self):
         info = {}
         try:
-            info = yield self.mind.callRemote('getSlaveInfo')
+            info = yield self._mind.callRemote('getSlaveInfo')
         except pb.NoSuchMethod:
             log.msg("BuildSlave.getSlaveInfo is unavailable - ignoring")
 
         try:
-            info["slave_commands"] = yield self.mind.callRemote('getCommands')
+            info["slave_commands"] = yield self._mind.callRemote('getCommands')
         except pb.NoSuchMethod:
             log.msg("BuildSlave.getCommands is unavailable - ignoring")
 
         try:
-            info["version"] = yield self.mind.callRemote('getVersion')
+            info["version"] = yield self._mind.callRemote('getVersion')
         except pb.NoSuchMethod:
             log.msg("BuildSlave.getVersion is unavailable - ignoring")
 
         defer.returnValue(info)
 
-    def remoteSetBuilderList(self, builders):
-        def cache_builders(builders):
-            self.builders = builders
+
+    def setBuilderList(self, builderNames):
+        if set(builderNames) == set(self._builders.keys()):
+            return
+
+        def saveBuilders(builders):
+            self._builders = {}
+            for name, builder in builders.iteritems():
+                self._builders[name] = Builder(builder)
+            self._builders = builders
             return builders
-        d = self.mind.callRemote('setBuilderList', builders)
-        d.addCallback(cache_builders)
+
+        d = self._mind.callRemote('setBuilderList', builderNames)
+        d.addCallback(saveBuilders)
         return d
 
-    def remoteStartCommand(self, remoteCommand, builderName, commandId, commandName, args):
-        slavebuilder = self.builders.get(builderName)
-        return slavebuilder.callRemote('startCommand',
-            remoteCommand, commandId, commandName, args
-        )
+
+    def getBuilder(self, builderName):
+        return self._builders[builderName]
+
 
     @defer.inlineCallbacks
-    def remoteShutdown(self):
+    def shutdown(self):
         # First, try the "new" way - calling our own remote's shutdown
         # method. The method was only added in 0.8.3, so ignore NoSuchMethod
         # failures.
         def new_way():
-            d = self.mind.callRemote('shutdown')
+            d = self._mind.callRemote('shutdown')
             d.addCallback(lambda _ : True) # successful shutdown request
             def check_nsm(f):
                 f.trap(pb.NoSuchMethod)
@@ -186,13 +203,12 @@ class Connection(base.Connection, pb.Avatar):
         # remote builder, which will cause the slave buildbot process to exit.
         def old_way():
             d = None
-            for b in self.buildslave.slavebuilders.values():
-                if b.remote:
-                    d = b.mind.callRemote("shutdown")
-                    break
+            for b in self._builders.values():
+                d = b._remote.callRemote("shutdown")
+                break
 
             if d:
-                name = self.buildslave.slavename
+                name = self._buildslave.slavename
                 log.msg("Shutting down (old) slave: %s" % name)
                 # The remote shutdown call will not complete successfully since
                 # the buildbot process exits almost immediately after getting
@@ -212,19 +228,59 @@ class Connection(base.Connection, pb.Avatar):
             return defer.succeed(None)
         yield old_way()
 
-    def remoteStartBuild(self, builderName):
-        slavebuilder = self.builders.get(builderName)
-        return slavebuilder.callRemote('startBuild')
 
-    def remoteInterruptCommand(self, commandId, why):
-        return defer.maybeDeferred(self.mind.callRemote, "interruptCommand",
-            commandId, why)
+    def disconnect(self):
+        transport = self.broker.transport
+        # this is the polite way to request that a socket be closed
+        try:
+            d = transport.abortConnection()
+        except NameError: # For twisted 11.0
+            d = transport.loseConnection()
+        log.msg("waiting for slave to finish disconnecting")
+
+        return d
+
+
 
     # perspective methods called by the slave
 
     def perspective_keepalive(self):
-        self.buildslave.messageReceivedFromSlave()
+        self._buildslave.messageReceivedFromSlave()
 
     def perspective_shutdown(self):
-        self.buildslave.messageReceivedFromSlave()
-        self.buildslave.shutdownRequested()
+        self._buildslave.messageReceivedFromSlave()
+        self._buildslave.shutdownRequested()
+
+class Builder(object):
+
+    def __init__(self, remote):
+        self._remote = remote
+
+    def startBuild(self, builderName):
+        d = self._remote.callRemote('startBuild')
+        d.addCallback(lambda _: Build(self._remote))
+        return d
+
+class Build(object):
+
+    def __init__(self, remote):
+        self._remote = remote
+
+    def startCommand(self, remoteCommand, commandName, args):
+        command = Command(remoteCommand)
+        commandID = command._id
+        return self._remote.callRemote('startCommand',
+            command, commandID, commandName, args
+        )
+
+class Command(pb.Referenceable):
+
+    _getNextID = staticmethod(count().next)
+
+    def __init__(self, remote):
+        self._remote = remote
+        self._id = self._getNextID()
+
+    def interruptCommand(self, commandId, why):
+        return self._remote.callRemote("interruptCommand",
+            self._id, why)
