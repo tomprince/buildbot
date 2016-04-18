@@ -116,7 +116,8 @@ class DBConnector(WorkerAPICompatMixin, service.ReconfigurableServiceMixin,
         # set up the engine and pool
         self._engine = enginestrategy.create_engine(db_url,
                                                     basedir=self.basedir)
-        self.pool = pool.DBThreadPool(self._engine, reactor=self.master.reactor, verbose=verbose)
+        pool_factory = self.master.config.db.get('_pool_factory')
+        self.pool = pool.DBThreadPool(self._engine, reactor=self.master.reactor, verbose=verbose, pool_factory=pool_factory)
 
         # make sure the db is up to date, unless specifically asked not to
         if check_version:

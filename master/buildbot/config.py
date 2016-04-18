@@ -60,6 +60,12 @@ _errors = None
 DEFAULT_DB_URL = 'sqlite:///state.sqlite'
 
 
+class TestOnlyWarning(Warning):
+    """
+    A warning for config options meant only for tests.
+    """
+
+
 def error(error):
     if _errors is not None:
         _errors.addError(error)
@@ -425,7 +431,7 @@ class MasterConfig(util.ComparableMixin, WorkerAPICompatMixin):
 
         if 'db' in config_dict:
             db = config_dict['db']
-            if set(db.keys()) - set(['db_url', 'db_poll_interval']) and throwErrors:
+            if set(db.keys()) - set(['db_url', 'db_poll_interval', '_pool_factory']) and throwErrors:
                 error("unrecognized keys in c['db']")
             config_dict = db
 
@@ -441,6 +447,9 @@ class MasterConfig(util.ComparableMixin, WorkerAPICompatMixin):
 
     def load_db(self, filename, config_dict):
         self.db = dict(db_url=self.getDbUrlFromConfig(config_dict))
+        if '_pool_factory' in config_dict.get('db', {}):
+            self.db['_pool_factory'] = config_dict['db']['_pool_factory']
+            warnings.warn('_pool_factory is only for tests', TestOnlyWarning)
 
     def load_mq(self, filename, config_dict):
         from buildbot.mq import connector  # avoid circular imports

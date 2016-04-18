@@ -607,6 +607,18 @@ class MasterConfig_loaders(ConfigErrorsMixin, unittest.TestCase):
                          dict(db=dict(db_url='abcd', db_poll_interval=10, bar='bar')))
         self.assertConfigError(self.errors, "unrecognized keys in")
 
+    def test_load_db_pool_factory(self):
+        """
+        Setting a DB pool factory produces a warning.
+        """
+        def pool_factory():
+            pass
+        with assertProducesWarning(config.TestOnlyWarning):
+            self.cfg.load_db(self.filename,
+                             dict(db=dict(_pool_factory=pool_factory)))
+        self.assertResults(db=dict(db_url="sqlite:///state.sqlite",
+                                   _pool_factory=pool_factory))
+
     def test_load_mq_defaults(self):
         self.cfg.load_mq(self.filename, {})
         self.assertResults(mq=dict(type='simple'))

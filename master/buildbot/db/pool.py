@@ -86,7 +86,7 @@ class DBThreadPool(object):
 
     running = False
 
-    def __init__(self, engine, reactor, verbose=False):
+    def __init__(self, engine, reactor, verbose=False, pool_factory=None):
         # verbose is used by upgrade scripts, and if it is set we should print
         # messages about versions and other warnings
         log_msg = log.msg
@@ -99,6 +99,9 @@ class DBThreadPool(object):
 
         pool_size = 5
 
+        if pool_factory is None:
+            pool_factory = threadpool.ThreadPool
+
         # If the engine has an C{optimal_thread_pool_size} attribute, then the
         # maxthreads of the thread pool will be set to that value.  This is
         # most useful for SQLite in-memory connections, where exactly one
@@ -106,9 +109,9 @@ class DBThreadPool(object):
         if hasattr(engine, 'optimal_thread_pool_size'):
             pool_size = engine.optimal_thread_pool_size
 
-        self._pool = threadpool.ThreadPool(minthreads=1,
-                                           maxthreads=pool_size,
-                                           name='DBThreadPool')
+        self._pool = pool_factory(minthreads=1,
+                                  maxthreads=pool_size,
+                                  name='DBThreadPool')
 
         self.engine = engine
         if engine.dialect.name == 'sqlite':
