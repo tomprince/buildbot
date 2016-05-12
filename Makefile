@@ -36,7 +36,7 @@ frontend:
 # do installation tests. Test front-end can build and install for all install methods
 frontend_install_tests:
 	$(PIP) install virtualenv
-	trial -j2 pkg/test_buildbot_pkg.py
+	trial pkg/test_buildbot_pkg.py
 
 prebuilt_frontend:
 	$(PIP) install -U http://ftp.buildbot.net/pub/latest/buildbot_www-1latest-py2-none-any.whl
