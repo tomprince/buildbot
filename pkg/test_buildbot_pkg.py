@@ -21,6 +21,7 @@ from subprocess import check_call
 from textwrap import dedent
 
 from twisted.trial import unittest
+from twisted.python.util import sibpath
 
 
 class BuildbotWWWPkg(unittest.TestCase):
@@ -28,7 +29,7 @@ class BuildbotWWWPkg(unittest.TestCase):
     pkgPaths = ["www", "base"]
     epName = "base"
 
-    loadTestScript = dedent("""
+    loadTestScript = dedent("""\
         import pkg_resources
         apps = {}
         for ep in pkg_resources.iter_entry_points('buildbot.www'):
@@ -48,7 +49,10 @@ class BuildbotWWWPkg(unittest.TestCase):
         self.virtualenv = os.path.abspath(self.mktemp())
         check_call(['virtualenv', self.virtualenv])
         self.python_path = os.path.join(self.virtualenv, 'bin', 'python')
-        call([self.python_path, "-m", "pip", "install", os.path.dirname(__file__), "mock"])
+        call([self.python_path, "-m", "pip", "install",
+              os.path.dirname(__file__),
+              sibpath(os.path.dirname(__file__), 'master'),
+              "mock"])
 
         package_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *self.pkgPaths))
         self.path = os.path.abspath(self.mktemp())
@@ -78,7 +82,7 @@ class BuildbotWWWPkg(unittest.TestCase):
     def test_egg(self):
         self.run_setup("bdist_egg")
         # egg installation is not supported by pip, so we use easy_install
-        check_call([self.python_path, "-m", "easy_install", "install"] + glob("dist/*.egg"), cwd=self.path)
+        check_call([self.python_path, "-m", "easy_install"] + glob("dist/*.egg"), cwd=self.path)
         self.check_correct_installation()
 
     def test_develop(self):
