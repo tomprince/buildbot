@@ -76,13 +76,13 @@ class BuildbotWWWPkg(unittest.TestCase):
 
     def test_wheel(self):
         self.run_setup("bdist_wheel")
-        check_call([self.python_path, "-m", "pip", "install"] + glob("dist/*.whl"), cwd=self.path)
+        check_call([self.python_path, "-m", "pip", "install"] + glob(self.path + "/dist/*.whl"), cwd=self.path)
         self.check_correct_installation()
 
     def test_egg(self):
         self.run_setup("bdist_egg")
         # egg installation is not supported by pip, so we use easy_install
-        check_call([self.python_path, "-m", "easy_install"] + glob("dist/*.egg"), cwd=self.path)
+        check_call([self.python_path, "-m", "easy_install"] + glob(self.path + "/dist/*.egg"), cwd=self.path)
         self.check_correct_installation()
 
     def test_develop(self):
@@ -95,7 +95,7 @@ class BuildbotWWWPkg(unittest.TestCase):
 
     def test_sdist(self):
         self.run_setup("sdist")
-        check_call([self.python_path, "-m", "pip", "install"] + glob('dist/*.tar.gz'), cwd=self.path)
+        check_call([self.python_path, "-m", "pip", "install"] + glob(self.path + '/dist/*.tar.gz'), cwd=self.path)
         self.check_correct_installation()
 
 
