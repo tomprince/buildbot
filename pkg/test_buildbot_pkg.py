@@ -16,7 +16,6 @@
 import os
 from glob import glob
 import shutil
-from subprocess import call
 from subprocess import check_call
 from textwrap import dedent
 
@@ -49,10 +48,10 @@ class BuildbotWWWPkg(unittest.TestCase):
         self.virtualenv = os.path.abspath(self.mktemp())
         check_call(['virtualenv', self.virtualenv])
         self.python_path = os.path.join(self.virtualenv, 'bin', 'python')
-        call([self.python_path, "-m", "pip", "install",
-              os.path.dirname(__file__),
-              sibpath(os.path.dirname(__file__), 'master'),
-              "mock"])
+        check_call([self.python_path, "-m", "pip", "install",
+                    os.path.dirname(__file__),
+                    sibpath(os.path.dirname(__file__), 'master'),
+                    "mock"])
 
         package_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *self.pkgPaths))
         self.path = os.path.abspath(self.mktemp())
@@ -76,13 +75,13 @@ class BuildbotWWWPkg(unittest.TestCase):
 
     def test_wheel(self):
         self.run_setup("bdist_wheel")
-        check_call([self.python_path, "-m", "pip", "install"] + glob(self.path + "/dist/*.whl"), cwd=self.path)
+        check_call([self.python_path, "-m", "pip", "install"] + glob(self.path + "/dist/*.whl"))
         self.check_correct_installation()
 
     def test_egg(self):
         self.run_setup("bdist_egg")
         # egg installation is not supported by pip, so we use easy_install
-        check_call([self.python_path, "-m", "easy_install"] + glob(self.path + "/dist/*.egg"), cwd=self.path)
+        check_call([self.python_path, "-m", "easy_install"] + glob(self.path + "/dist/*.egg"))
         self.check_correct_installation()
 
     def test_develop(self):
@@ -95,7 +94,7 @@ class BuildbotWWWPkg(unittest.TestCase):
 
     def test_sdist(self):
         self.run_setup("sdist")
-        check_call([self.python_path, "-m", "pip", "install"] + glob(self.path + '/dist/*.tar.gz'), cwd=self.path)
+        check_call([self.python_path, "-m", "pip", "install"] + glob(self.path + '/dist/*.tar.gz'))
         self.check_correct_installation()
 
 
