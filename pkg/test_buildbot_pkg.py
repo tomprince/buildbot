@@ -14,6 +14,7 @@
 # Copyright Buildbot Team Members
 
 import os
+from glob import glob
 import shutil
 from subprocess import call
 from subprocess import check_call
@@ -39,28 +40,31 @@ class BuildbotWWWPkg(unittest.TestCase):
         print apps["%(epName)s"]
         """)
 
-    @property
-    def path(self):
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *self.pkgPaths))
-
     def rmtree(self, d):
         if os.path.isdir(d):
             shutil.rmtree(d)
 
     def setUp(self):
-        call("pip uninstall -y " + self.pkgName, shell=True)
+        self.virtualenv = os.path.abspath(self.mktemp())
+        check_call(['virtualenv', self.virtualenv])
+        self.python_path = os.path.join(self.virtualenv, 'bin', 'python')
+        call([self.python_path, "-m", "pip", "install", os.path.dirname(__file__), "mock"])
+
+        package_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *self.pkgPaths))
+        self.path = os.path.abspath(self.mktemp())
+        shutil.copytree(package_path, self.path)
         self.rmtree(os.path.join(self.path, "build"))
         self.rmtree(os.path.join(self.path, "dist"))
         self.rmtree(os.path.join(self.path, "static"))
 
     def run_setup(self, cmd):
-        check_call("python setup.py " + cmd, shell=True, cwd=self.path)
+        check_call([self.python_path, "setup.py", cmd], cwd=self.path)
 
     def check_correct_installation(self):
         # assert we can import buildbot_www
         # and that it has an endpoint with resource containing file "script.js"
         check_call([
-            'python', '-c', self.loadTestScript % dict(epName=self.epName)])
+            self.python_path, '-c', self.loadTestScript % dict(epName=self.epName)])
 
     def test_install(self):
         self.run_setup("install")
@@ -68,13 +72,13 @@ class BuildbotWWWPkg(unittest.TestCase):
 
     def test_wheel(self):
         self.run_setup("bdist_wheel")
-        check_call("pip install dist/*.whl", shell=True, cwd=self.path)
+        check_call([self.python_path, "-m", "pip", "install"] + glob("dist/*.whl"), cwd=self.path)
         self.check_correct_installation()
 
     def test_egg(self):
         self.run_setup("bdist_egg")
         # egg installation is not supported by pip, so we use easy_install
-        check_call("easy_install dist/*.egg", shell=True, cwd=self.path)
+        check_call([self.python_path, "-m", "easy_install", "install"] + glob("dist/*.egg"), cwd=self.path)
         self.check_correct_installation()
 
     def test_develop(self):
@@ -82,12 +86,12 @@ class BuildbotWWWPkg(unittest.TestCase):
         self.check_correct_installation()
 
     def test_develop_via_pip(self):
-        check_call("pip install -e .", shell=True, cwd=self.path)
+        check_call([self.python_path, "-m", "pip", "install", '-e', '.'], cwd=self.path)
         self.check_correct_installation()
 
     def test_sdist(self):
         self.run_setup("sdist")
-        check_call("pip install dist/*.tar.gz", shell=True, cwd=self.path)
+        check_call([self.python_path, "-m", "pip", "install"] + glob('dist/*.tar.gz'), cwd=self.path)
         self.check_correct_installation()
 
 
