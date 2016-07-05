@@ -525,7 +525,7 @@ class V2RootResource_REST(www.WwwTestMixin, unittest.TestCase):
         self.assertEqual(spec.limit, expected_limit)
 
     def test_decode_result_spec_order(self):
-        expected_order = 'info',
+        expected_order = ('info',)
         self.make_request('/test')
         self.request.args = {'order': expected_order}
         spec = self.rsrc.decodeResultSpec(self.request, endpoint.Test)
@@ -555,7 +555,7 @@ class V2RootResource_REST(www.WwwTestMixin, unittest.TestCase):
 
     def test_decode_result_spec_not_a_collection_order(self):
         def expectRaiseBadRequest():
-            order = 'info',
+            order = ('info',)
             self.make_request('/test')
             self.request.args = {'order': order}
             self.rsrc.decodeResultSpec(self.request, endpoint.TestEndpoint)

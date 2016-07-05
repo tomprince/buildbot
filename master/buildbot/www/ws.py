@@ -18,6 +18,7 @@ from autobahn.twisted.websocket import WebSocketServerProtocol
 from future.utils import itervalues
 from twisted.internet import defer
 from twisted.python import log
+from twisted.internet.task import LoopingCall
 
 from buildbot.util import json
 from buildbot.util import toJson
@@ -30,6 +31,14 @@ class WsProtocol(WebSocketServerProtocol):
         self.master = master
         self.qrefs = {}
         self.debug = self.master.config.www.get('debug', False)
+        self._pinger = LoopingCall(self.sendPing)
+        self._pinger.clock = master.reactor
+
+    def onOpen(self):
+        self._pinger.start(30)
+
+    def onClose(self):
+        self._pinger.stop()
 
     def sendJsonMessage(self, **msg):
         return self.sendMessage(json.dumps(msg, default=toJson, separators=(',', ':')).encode('utf8'))
